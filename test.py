@@ -4,22 +4,25 @@ from scipy.optimize import LinearConstraint, NonlinearConstraint, minimize
 from types import SimpleNamespace
 
 from utils import VARMA_sim, gen_stable_model, gen_rc_roots, HSRC, jac_HSRC
-from utils import gen_random_pos_symmetric, to_invertible
+from utils import gen_random_pos_symmetric, to_invertible, calc_residuals
 from VARsMA import VARsMA_Estimator, optimize_model
 
 
 def _gen_test():
-    np.random.seed(0)    
+    np.random.seed(0)
     if False:
         k = 2
         T = 5000
         q_in = 3
         p_in = 1
+        mu = None
     else:
-        k = 10
+        k = 8
         T = 5000
         q_in = 3
-        p_in = 2
+        p_in = 1
+        mu = np.random.randn(k) * 2
+        # mu = None
 
     # sigma = np.array([4, 0.8, 0.8, 1]).reshape(k, k)
     sigma = gen_random_pos_symmetric(k)
@@ -32,20 +35,27 @@ def _gen_test():
     theta2 = concatenate([eye(k) * theta_[i] for i in range(q_in)], axis=1)
     
     vs = VARMA_sim(
-        nobs=T, arlags=None, malags=None, cnst=None,
+        nobs=T, arlags=None, malags=None, cnst=mu,
         phi=phi2, theta=theta2, skip=2000, sigma=sigma)
-    X = concatenate([vs.init_series, vs.series])
-    ve = VARsMA_Estimator(X)
+    X = vs.series
+
     p = p_in
     q = q_in
-    trend = False
-    ve.setEstimationStructure(p, trend)
-    theta0 = to_invertible(np.random.randn(q))
     
+    trend = mu is not None
+    ve = VARsMA_Estimator(X)
+    ve.setEstimationStructure(p, trend)
+    t0 = np.random.randn(q)
+    theta0 = to_invertible(t0)
+   
     A = np.array([-1., -1., -1., -1, 1, 3, 1, -1, 1]).reshape(3, 3)
     ub = np.array([1., 3., 1.])
     lc = LinearConstraint(A, -np.inf, ub, keep_feasible=True)
-    
+
+    """
+    svz = {'X': X, 'theta0': theta0, 'theta2': theta_, 'mu': mu, 'phi2': phi2}
+    np.savez_compressed('/tmp/trends.npz', **svz)
+    """
     def cons_f(x):
         return -x[0] * x[2] + x[1] + x[2]*x[2]
 
@@ -58,17 +68,34 @@ def _gen_test():
 
     nlc = NonlinearConstraint(
         cons_f, -np.inf, 1,
-        jac=cons_J, hess=cons_H)
+        jac=cons_J, hess=cons_H, keep_feasible=True)
 
     def f(theta):
-        ve.calc(theta)
+        ve.calc(theta, check_stable=False)
         return ve.LLK
 
     def jf(theta):
         return ve.grLLK
     
-    ret = minimize(f, theta0, method='trust-constr',
-                   jac=jf, constraints=[lc, nlc])
+    from VARsMA import VARsMA_Estimator_adjust_convol
+    old_ve = VARsMA_Estimator_adjust_convol(X)
+    old_ve.setEstimationStructure(p, trend)
+    old_ve.calc(theta0)
+    print(old_ve.LLK)
+    ve.calc(theta0)
+    print(ve.LLK)
+    print(old_ve.grLLK)
+    print(ve.grLLK)
+    success = False
+    while not success:
+        try:
+            theta0 = to_invertible(np.random.randn(q))
+            ret = minimize(f, theta0, method='trust-constr',
+                           jac=jf, constraints=[lc, nlc])
+            success = True
+        except Exception as e:
+            print(e)
+            pass
 
     print(ret)
     ret_opt = optimize_model(
@@ -87,6 +114,44 @@ def _gen_test():
     print(ret_hs)
 
 
+def _test_predict():
+    np.random.seed(0)
+    k = 4
+    T = 5000
+    T_F = 1000
+    q_in = 3
+    p_in = 1
+    mu = np.random.randn(k) * 2
+
+    sigma = gen_random_pos_symmetric(k)
+
+    phi2 = -gen_stable_model(p_in, k)
+    theta_ = to_invertible(np.random.randn(q_in))
+    theta2 = zeros((k, q_in*k))
+    for i in range(q_in):
+        theta2[:, i*k:(i+1)*k] = eye(k) * theta_[i]
+    theta2 = concatenate([eye(k) * theta_[i] for i in range(q_in)], axis=1)
+    # train on rolling windows:
+    vs = VARMA_sim(
+        nobs=T+T_F, arlags=None, malags=None, cnst=mu,
+        phi=phi2, theta=theta2, skip=2000, sigma=sigma)
+    X = vs.series[:T, :]
+
+    p = p_in
+    q = q_in
+    
+    trend = mu is not None
+    ve = VARsMA_Estimator(X)
+    ve.setEstimationStructure(p, trend)
+    t0 = np.random.randn(q)
+    theta0 = to_invertible(t0)
+    ve.fit(p, q, theta0, trend)
+    print(sigma)
+    print(ve.Omega)
+    print((ve.residuals.T @ ve.residuals) / (ve.n - ve.p))
+    ve.predict(2)
+
+    
 def test_HS_relation():
     np.random.seed(0)    
     

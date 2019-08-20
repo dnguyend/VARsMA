@@ -7,6 +7,7 @@ from numpy.linalg import solve, det, eigh, eig, inv
 from numpy.random import randn, randint, uniform, choice
 from numpy.fft import ifft
 from types import SimpleNamespace
+from numba import jit
 # from scipy.interpolate import lagrange
 
 m_SMALL_SQRT = np.finfo(float).eps
@@ -23,21 +24,23 @@ def nextn(i):
     return HCN[np.searchsorted(HCN, [i])[0]]
 
 
+@jit(nopython=True)
 def inverse_poly(qpol, n):
     """inverse polynomial. Chopped after n terms
     including the first term
     """
     ret = zeros(n)
     ret[0] = 1
-    qrev = -flip(qpol)
+    qrev = -qpol[::-1].copy()
     for i in range(1, n):
         if i >= qpol.shape[0]:
             ret[i] = ret[i-qpol.shape[0]:i] @ qrev
         else:
-            ret[i] = -(ret[:i] @ flip(qpol[:i]))
+            ret[i] = -(ret[:i] @ qpol[:i][::-1])
     return ret
 
 
+@jit(nopython=True)
 def mat_convol(mat, vec):
     """ Matrix convolution
     """
@@ -45,6 +48,26 @@ def mat_convol(mat, vec):
     N = mat.shape[0]
     for i in range(N):
         ret[i:, :] = ret[i:, :] + vec[i]*mat[:N-i, :]
+    return ret
+
+
+@jit(nopython=True)
+def mat_inv_convol(mat, theta):
+    """ convolution with inverse time series.
+    the inverse will be chopped after n terms
+    theta will have no constant term (assume to be 1)
+    """
+    ret = zeros(mat.shape)
+    N = mat.shape[0]
+    ret[0, :] = mat[0, :]
+    q = theta.shape[0]
+    theta_rev = theta[::-1].copy()
+    for i in range(1, N):
+        if i <= q:
+            ret[i, :] = mat[i, :] - theta[:i][::-1] @ ret[:i]
+            # ret[i, :] = mat[i, :] - theta_rev[q-i:] @ ret[:i]
+        else:
+            ret[i, :] = mat[i, :] - theta_rev @ ret[i-q:i, :]
     return ret
 
 
@@ -127,15 +150,15 @@ def VARMA_sim(nobs, arlags=None, malags=None, cnst=None,
             for i in range(nar):
                 zt[it, :] += phi[:, i*k:(i+1)*k] @\
                     zt[it-arlags[i], :]
-    if cnst is not None:
-        zt[ist:, :] += cnst
+            if cnst is not None:
+                zt[it, :] += cnst
     init_series = full((0, k), nan)
     init_noises = full((0, k), nan)
    
     if (p > 0):
-        init_series = zt[(skip-p+1):skip, :]
+        init_series = zt[(skip-p):skip, :]
     if (q > 0):
-        init_noises = at[(skip-q+1):skip, :]
+        init_noises = at[(skip-q):skip, :]
     return SimpleNamespace(
         series=zt[skip:nT, :],
         noises=at[skip:nT, :],
@@ -682,3 +705,26 @@ if __name__ == '__main__':
         # mat2 = matrix(c(-1,1/l2,-1,1/l1),2,2)
         # mat2 %*% j1 %*% solve(mat1)
         # polyroot(c(1,ahs))
+
+
+def calc_residuals(Phi, theta, X, trend=None):
+    """residuals from at fitted model.
+    """
+    assert Phi.shape[1] % Phi.shape[0] == 0
+    p = Phi.shape[1] // Phi.shape[0]
+    q = theta.shape[0]
+    n = X.shape[0]
+    T = n - p
+    k = X.shape[1]
+    residuals = zeros((T+q, k))
+    residuals[q:, :] = X[p:, :]
+    for i in range(p):
+        residuals[q:, :] -= X[i:i+T, :] @ Phi[(p-i-1)*k:(p-i)*k, :]
+    if trend is not None:
+        residuals[q:, :] -= trend
+    for it in range(T):
+        for i in range(q):
+            residuals[q+it, :] -= theta[i] * residuals[q+it-i-1, :]
+    return residuals[-T:, :]
+
+        
