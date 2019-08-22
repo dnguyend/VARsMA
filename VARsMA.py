@@ -270,8 +270,8 @@ class VARsMA_Estimator(object):
             self.XThetaLag2[:, 0] = - mat_inv_convol(
                 ones((T, 1)),  self.Theta2).reshape(-1)
 
-        elif (self.p == 0):
-            self.XThetaLag2[:, 0] = zeros((T, self.hSize))
+        # elif self.p  0:
+        # self.XThetaLag2[:, 0] = zeros((T, self.hSize))
 
         for i in range(self.p):
             self.XThetaLag2[:, self.bhidx+i*k:self.bhidx+(1+i)*k] =\
@@ -416,6 +416,8 @@ class VARsMA_Estimator(object):
             debug=False, use_cutoff=False, max_trials=10):
         """Fit a model with given parameters
         """
+        if theta0 is None:
+            theta0 = to_invertible(np.random.randn(q))
         from scipy.optimize import minimize
         self.setEstimationStructure(p, trend)
         _use_cutoff = use_cutoff
@@ -432,11 +434,11 @@ class VARsMA_Estimator(object):
                 if not stable:
                     simple_ret.llk = m_BIG_M_LLK
                     simple_ret.gr_llk = m_BIG_M_LLK * theta /\
-                        np.linear.norm(theta)
+                        np.linalg.norm(theta)
                     return m_BIG_M_LLK
-                self.calcLLK(theta)
-                simple_ret.llk = self.llk
-                simple_ret.gr_llk = self.gr_llk.copy()
+                self.calc(theta)
+                simple_ret.llk = self.LLK
+                simple_ret.gr_llk = self.grLLK.copy()
                 return simple_ret.llk
             
             def jf_cutoff(theta):
@@ -447,9 +449,13 @@ class VARsMA_Estimator(object):
             while (n_trials < max_trials) and (not success):
                 try:        
                     ret = minimize(
-                        f_cutoff, theta0, method='L-BFGS-B',
-                        jac=jf_cutoff, constraints=constraints, bounds=bounds)
+                        f_cutoff, init_theta,
+                        method='L-BFGS-B',
+                        # method='CG',
+                        jac=jf_cutoff, options={'maxiter': 400})
                     success = ret['success']
+                    if not success:
+                        raise(ValueError('minimize failed retry'))
                 except Exception as e:
                     print(e)
                     n_trials += 1
@@ -474,6 +480,8 @@ class VARsMA_Estimator(object):
                             f, init_theta, method='trust-constr',
                             jac=jf, constraints=constraints, bounds=bounds)
                         success = ret['success']
+                        if not success:
+                            raise(ValueError('minimize failed retry'))
                     except Exception as e:
                         print(e)
                         n_trials += 1
@@ -481,7 +489,8 @@ class VARsMA_Estimator(object):
                             np.random.randn(theta0.shape[0]))                        
         if success:
             self.calc_residuals()
-        return ret
+            return ret
+        return None
 
     def calc_residuals(self):
         self.residuals = calc_residuals(
@@ -511,7 +520,7 @@ class VARsMA_Estimator(object):
         for i in range(q):
             _pred[mpq:, :] += self.Theta[i] * _resi[mpq-i:_resi.shape[0]-i, :]
 
-        for f in range(forward_periods):
+        for f in range(mpq, mpq + forward_periods):
             for i in range(self.p):
                 _pred[f, :] += _pred[f-i-1, :] @\
                     self.Phi[i*self.k:(1+i)*self.k, :]

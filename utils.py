@@ -145,13 +145,13 @@ def VARMA_sim(nobs, arlags=None, malags=None, cnst=None,
         for j in range(nma):
             zt[ist:, :] += at[ist-malags[j]:-malags[j], :] @\
                 theta[:, j*k:(j+1)*k]
-    if(nar > 0):
-        for it in range(ist, nT):
-            for i in range(nar):
-                zt[it, :] += phi[:, i*k:(i+1)*k] @\
-                    zt[it-arlags[i], :]
-            if cnst is not None:
-                zt[it, :] += cnst
+
+    for it in range(ist, nT):
+        for i in range(nar):
+            zt[it, :] += phi[:, i*k:(i+1)*k] @\
+                         zt[it-arlags[i], :]
+        if cnst is not None:
+            zt[it, :] += cnst
     init_series = full((0, k), nan)
     init_noises = full((0, k), nan)
    
@@ -710,8 +710,12 @@ if __name__ == '__main__':
 def calc_residuals(Phi, theta, X, trend=None):
     """residuals from at fitted model.
     """
-    assert Phi.shape[1] % Phi.shape[0] == 0
-    p = Phi.shape[1] // Phi.shape[0]
+
+    if (Phi is None) or (not len(Phi)):
+        p = 0
+    else:
+        assert Phi.shape[0] % Phi.shape[1] == 0
+        p = Phi.shape[0] // Phi.shape[1]
     q = theta.shape[0]
     n = X.shape[0]
     T = n - p
