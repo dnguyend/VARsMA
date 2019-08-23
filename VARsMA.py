@@ -5,8 +5,8 @@ from numpy import poly1d, prod
 from numpy.linalg import solve, det, cholesky
 
 from scipy.linalg import solve_triangular
-from utils import inverse_poly, mat_convol, to_invertible, mat_inv_convol
-from utils import calc_residuals, gen_rc_roots
+from .utils import inverse_poly, mat_convol, to_invertible, mat_inv_convol
+from .utils import calc_residuals, gen_rc_roots
 from types import SimpleNamespace
 
 
