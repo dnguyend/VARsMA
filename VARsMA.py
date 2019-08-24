@@ -549,19 +549,16 @@ class VARsMA_Estimator(object):
         """
         tt = np.zeros((n_grids * n_grids, 3))
         cnt = 0
-        for iy in range(n_grids):  
-            for ix in range(2*n_grids-1-2*iy):    
+        for iy in range(n_grids):
+            for ix in range(2*n_grids-1-2*iy):
                 tt[cnt, 1] = 1 - (2*iy + 1.) / n_grids
                 tt[cnt, 0] = -2 + (2 * iy + 2 * ix + 2) / n_grids
+                try:
+                    tt[cnt, 2] = self.calc(tt[cnt, :2])
+                except Exception as e:
+                    print(e)
+                    tt[cnt, 2] = np.nan
                 cnt += 1
-        
-        for i in range(tt.shape[0]):
-            try:
-                self.calc(tt)
-                tt[:, 2] = self.LLK
-            except Exception as e:
-                print(e)
-                tt[:, 2] = np.nan
         return tt
 
 
