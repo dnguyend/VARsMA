@@ -528,6 +528,42 @@ class VARsMA_Estimator(object):
                 _pred[f, :] += self.mu
         return _pred[-forward_periods:, :]
 
+    def gen_plot1q(self, n_grids):
+        """ Generate data for a plot wit q = 1.
+        The invertble
+        """
+        ret = np.full((2*n_grids+1, 2), np.nan)
+        ret[:, 0] = (np.arange(2*n_grids+1) / float(n_grids) - 1)
+        ret[:, 1] = np.nan
+        # z_ = full_like(x_, nan)
+        for i in range(ret.shape[0]):
+            self.calc(np.array([ret[i, 0]]))
+            ret[i, 1] = self.LLK
+            # z_[i] = ve.grLLK
+        return ret
+
+    def gen_plot2q(self, n_grids):
+        """ Generate data for a plot wit q = 2
+        The invertible area is
+        a isosceles right triangle.
+        """
+        tt = np.zeros((n_grids * n_grids, 3))
+        cnt = 0
+        for iy in range(n_grids):  
+            for ix in range(2*n_grids-1-2*iy):    
+                tt[cnt, 1] = 1 - (2*iy + 1.) / n_grids
+                tt[cnt, 0] = -2 + (2 * iy + 2 * ix + 2) / n_grids
+                cnt += 1
+        
+        for i in range(tt.shape[0]):
+            try:
+                self.calc(tt)
+                tt[:, 2] = self.LLK
+            except Exception as e:
+                print(e)
+                tt[:, 2] = np.nan
+        return tt
+
 
 class _VARsMA_Estimator_adjust_convol(object):
     """ class to calculate likelihood function.
