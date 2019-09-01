@@ -3,7 +3,7 @@
 
 # Vector Autoregressive with scalar Moving Average Model
 ## Introduction.
-This notebook explains the underlying idea of the the paper "Vector Autoregressive with scalar Moving Average Model". The main ideas are the following
+This notebook explains the underlying idea of the the paper [Vector Autoregressive with scalar Moving Average Model](https://github.com/dnguyend/VARsMA/blob/master/docs/VARsMA.pdf). The main ideas are the following
 
 * When the Autoregressive and the Moving Average polynomials commute with each other, there is a simple formula for the conditional likelihood function.
 * The formula is a Generalized Linear Regression type formula, with the inner product given by the Toeplitz matrix of the moving average process.
